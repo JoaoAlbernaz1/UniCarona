@@ -20,7 +20,7 @@
 | Documento | Link |
 |-----------|------|
 | **Especificação dos Casos de Uso** | [Abrir no Google Docs](https://docs.google.com/document/d/1yODVtw9hHyY5FSUCa7P8aLDSWaZnLDw6qFGL2goDdGM/edit?usp=sharing) |
-| Documento de Visão | [PDF](docs/Documento_de_Visao.pdf) |
+| Documento de Visão | [PDF](docs/documento_visão.pdf) |
 
 ---
 
