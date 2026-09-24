@@ -1,0 +1,365 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleName {
+  PASSENGER
+  DRIVER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+  DEACTIVATED
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum RideStatus {
+  SCHEDULED
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RideRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum NotificationType {
+  RIDE_REQUEST_RECEIVED
+  RIDE_REQUEST_ACCEPTED
+  RIDE_REQUEST_REJECTED
+  RIDE_REQUEST_EXPIRED
+  RIDE_CANCELLED
+  RIDE_STARTED
+  RIDE_COMPLETED
+  MESSAGE_RECEIVED
+  INCIDENT_UPDATED
+  SYSTEM
+}
+
+enum IncidentType {
+  INAPPROPRIATE_BEHAVIOR
+  NO_SHOW
+  VEHICLE_ISSUE
+  SAFETY_CONCERN
+  OTHER
+}
+
+enum IncidentStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id                 String            @id @default(uuid()) @db.Uuid
+  fullName           String            @map("full_name")
+  cpf                String            @unique
+  institutionalEmail String            @unique @map("institutional_email")
+  passwordHash       String            @map("password_hash")
+  status             UserStatus        @default(ACTIVE)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt          DateTime?         @map("deleted_at") @db.Timestamptz(3)
+  roles              UserRole[]
+  vehicles           Vehicle[]
+  routeTemplates     RouteTemplate[]
+  drivenRides        Ride[]            @relation("RideDriver")
+  rideRequests       RideRequest[]
+  reservations       RideReservation[]
+  ratingsGiven       Rating[]          @relation("RatingReviewer")
+  ratingsReceived    Rating[]          @relation("RatingReviewed")
+  notifications      Notification[]
+  incidentsReported  Incident[]        @relation("IncidentReporter")
+  incidentsAgainst   Incident[]        @relation("IncidentReportedUser")
+  cancellations      Cancellation[]
+  auditLogs          AuditLog[]
+  refreshSessions    RefreshSession[]
+
+  @@map("users")
+}
+
+model Role {
+  id    String     @id @default(uuid()) @db.Uuid
+  name  RoleName   @unique
+  users UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshSession {
+  id           String          @id @default(uuid()) @db.Uuid
+  userId       String          @map("user_id") @db.Uuid
+  tokenHash    String          @map("token_hash")
+  familyId     String          @map("family_id") @db.Uuid
+  expiresAt    DateTime        @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime?       @map("revoked_at") @db.Timestamptz(3)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  replacedById String?         @unique @map("replaced_by_id") @db.Uuid
+  userAgent    String?         @map("user_agent")
+  user         User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  replacedBy   RefreshSession? @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces     RefreshSession? @relation("SessionRotation")
+
+  @@index([userId, familyId])
+  @@map("refresh_sessions")
+}
+
+model Vehicle {
+  id                String          @id @default(uuid()) @db.Uuid
+  ownerId           String          @map("owner_id") @db.Uuid
+  brand             String
+  model             String
+  color             String
+  plate             String          @unique
+  year              Int
+  passengerCapacity Int             @map("passenger_capacity")
+  active            Boolean         @default(true)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  owner             User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  routeTemplates    RouteTemplate[]
+  rides             Ride[]
+
+  @@index([ownerId, active])
+  @@map("vehicles")
+}
+
+model Location {
+  id               String          @id @default(uuid()) @db.Uuid
+  name             String          @unique
+  type             String          @default("REGION")
+  active           Boolean         @default(true)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  origins          RouteTemplate[] @relation("RouteOrigin")
+  destinations     RouteTemplate[] @relation("RouteDestination")
+  rideOrigins      Ride[]          @relation("RideOrigin")
+  rideDestinations Ride[]          @relation("RideDestination")
+
+  @@map("locations")
+}
+
+model RouteTemplate {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  driverId              String                 @map("driver_id") @db.Uuid
+  vehicleId             String                 @map("vehicle_id") @db.Uuid
+  originLocationId      String                 @map("origin_location_id") @db.Uuid
+  destinationLocationId String                 @map("destination_location_id") @db.Uuid
+  departureTime         String                 @map("departure_time") @db.VarChar(5)
+  timezone              String                 @default("America/Sao_Paulo")
+  availableSeats        Int                    @map("available_seats")
+  active                Boolean                @default(true)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  driver                User                   @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle               Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  originLocation        Location               @relation("RouteOrigin", fields: [originLocationId], references: [id], onDelete: Restrict)
+  destinationLocation   Location               @relation("RouteDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  weekdays              RouteTemplateWeekday[]
+  rides                 Ride[]
+
+  @@index([originLocationId, destinationLocationId, active])
+  @@map("route_templates")
+}
+
+model RouteTemplateWeekday {
+  routeTemplateId String        @map("route_template_id") @db.Uuid
+  weekday         Weekday
+  routeTemplate   RouteTemplate @relation(fields: [routeTemplateId], references: [id], onDelete: Cascade)
+
+  @@id([routeTemplateId, weekday])
+  @@map("route_template_weekdays")
+}
+
+model Ride {
+  id                    String            @id @default(uuid()) @db.Uuid
+  routeTemplateId       String            @map("route_template_id") @db.Uuid
+  driverId              String            @map("driver_id") @db.Uuid
+  vehicleId             String            @map("vehicle_id") @db.Uuid
+  originLocationId      String            @map("origin_location_id") @db.Uuid
+  destinationLocationId String            @map("destination_location_id") @db.Uuid
+  departureAt           DateTime          @map("departure_at") @db.Timestamptz(3)
+  totalSeats            Int               @map("total_seats")
+  availableSeats        Int               @map("available_seats")
+  status                RideStatus        @default(OPEN)
+  startedAt             DateTime?         @map("started_at") @db.Timestamptz(3)
+  completedAt           DateTime?         @map("completed_at") @db.Timestamptz(3)
+  cancelledAt           DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  routeTemplate         RouteTemplate     @relation(fields: [routeTemplateId], references: [id], onDelete: Restrict)
+  driver                User              @relation("RideDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle               Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  originLocation        Location          @relation("RideOrigin", fields: [originLocationId], references: [id], onDelete: Restrict)
+  destinationLocation   Location          @relation("RideDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  requests              RideRequest[]
+  reservations          RideReservation[]
+  cancellations         Cancellation[]
+  ratings               Rating[]
+  incidents             Incident[]
+
+  @@unique([routeTemplateId, departureAt])
+  @@index([status, departureAt])
+  @@map("rides")
+}
+
+model RideRequest {
+  id             String            @id @default(uuid()) @db.Uuid
+  rideId         String            @map("ride_id") @db.Uuid
+  passengerId    String            @map("passenger_id") @db.Uuid
+  seatsRequested Int               @map("seats_requested")
+  status         RideRequestStatus @default(PENDING)
+  expiresAt      DateTime          @map("expires_at") @db.Timestamptz(3)
+  respondedAt    DateTime?         @map("responded_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  ride           Ride              @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  passenger      User              @relation(fields: [passengerId], references: [id], onDelete: Restrict)
+  reservation    RideReservation?
+
+  @@index([rideId, status])
+  @@index([passengerId, status])
+  @@map("ride_requests")
+}
+
+model RideReservation {
+  id            String            @id @default(uuid()) @db.Uuid
+  rideId        String            @map("ride_id") @db.Uuid
+  passengerId   String            @map("passenger_id") @db.Uuid
+  requestId     String            @unique @map("request_id") @db.Uuid
+  seats         Int
+  status        ReservationStatus @default(CONFIRMED)
+  confirmedAt   DateTime          @default(now()) @map("confirmed_at") @db.Timestamptz(3)
+  cancelledAt   DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  ride          Ride              @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  passenger     User              @relation(fields: [passengerId], references: [id], onDelete: Restrict)
+  request       RideRequest       @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  cancellations Cancellation[]
+
+  @@index([rideId, status])
+  @@index([passengerId, status])
+  @@map("ride_reservations")
+}
+
+model Cancellation {
+  id                String           @id @default(uuid()) @db.Uuid
+  rideId            String           @map("ride_id") @db.Uuid
+  reservationId     String?          @map("reservation_id") @db.Uuid
+  cancelledByUserId String           @map("cancelled_by_user_id") @db.Uuid
+  reason            String
+  details           String?
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  ride              Ride             @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  reservation       RideReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  cancelledBy       User             @relation(fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+
+  @@map("cancellations")
+}
+
+model Rating {
+  id             String   @id @default(uuid()) @db.Uuid
+  rideId         String   @map("ride_id") @db.Uuid
+  reviewerId     String   @map("reviewer_id") @db.Uuid
+  reviewedUserId String   @map("reviewed_user_id") @db.Uuid
+  score          Int
+  comment        String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  ride           Ride     @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  reviewer       User     @relation("RatingReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewedUser   User     @relation("RatingReviewed", fields: [reviewedUserId], references: [id], onDelete: Restrict)
+
+  @@unique([rideId, reviewerId, reviewedUserId])
+  @@map("ratings")
+}
+
+model Notification {
+  id           String           @id @default(uuid()) @db.Uuid
+  userId       String           @map("user_id") @db.Uuid
+  type         NotificationType
+  title        String
+  message      String
+  resourceType String?          @map("resource_type")
+  resourceId   String?          @map("resource_id") @db.Uuid
+  metadata     Json?
+  readAt       DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model Incident {
+  id             String         @id @default(uuid()) @db.Uuid
+  rideId         String         @map("ride_id") @db.Uuid
+  reportedById   String         @map("reported_by_id") @db.Uuid
+  reportedUserId String?        @map("reported_user_id") @db.Uuid
+  type           IncidentType
+  description    String
+  status         IncidentStatus @default(OPEN)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  resolvedAt     DateTime?      @map("resolved_at") @db.Timestamptz(3)
+  ride           Ride           @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  reportedBy     User           @relation("IncidentReporter", fields: [reportedById], references: [id], onDelete: Restrict)
+  reportedUser   User?          @relation("IncidentReportedUser", fields: [reportedUserId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@map("incidents")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  metadata    Json?
+  ip          String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
